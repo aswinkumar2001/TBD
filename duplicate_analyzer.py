@@ -1,55 +1,80 @@
 import streamlit as st
 import pandas as pd
-import io
+from datetime import datetime
 
-# Set page configuration
-st.title("Duplicate Fed To Analyzer")
-st.write("Upload an Excel file with columns 'Fed To' and 'Fed From'. The app will extract rows where 'Fed To' has duplicates and provide a download option for the resulting Excel.")
+# Title of the app
+st.title("Excel Date-Time Value Converter")
 
-# File uploader
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx", "xls"])
+# File uploader with acceptance message
+uploaded_file = st.file_uploader("Upload your Excel file (xlsx/xls)", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
+    errors = []
     try:
         # Read the Excel file
-        df = pd.read_excel(uploaded_file)
+        df = pd.read_excel(uploaded_file, engine='openpyxl')
         
-        # Ensure columns exist
-        if 'Fed To' not in df.columns or 'Fed From' not in df.columns:
-            st.error("The uploaded file must contain 'Fed To' and 'Fed From' columns.")
+        # Check if "Date" column exists
+        if "Date" not in df.columns:
+            errors.append("Error: 'Date' column not found in the uploaded file.")
         else:
-            # Handle empty DataFrame
-            if df.empty:
-                st.warning("The uploaded file is empty. No data to process.")
-            else:
-                # Find duplicate 'Fed To'
-                duplicates = df['Fed To'].value_counts()
-                duplicate_values = duplicates[duplicates > 1].index
+            # Validate time columns (0:30 to 23:30, 0:00)
+            expected_time_columns = [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)] + ["0:00"]
+            missing_columns = [col for col in expected_time_columns if col not in df.columns]
+            if missing_columns:
+                errors.append(f"Error: Missing expected time columns: {', '.join(missing_columns)}")
+            
+            # Process the data
+            try:
+                # Melt the dataframe
+                melted_df = pd.melt(df, 
+                                  id_vars=["Date"], 
+                                  var_name="Time", 
+                                  value_name="Value")
                 
-                # Filter the DataFrame to include only rows with duplicate 'Fed To'
-                result_df = df[df['Fed To'].isin(duplicate_values)].sort_values(by='Fed To')
+                # Convert Date to datetime and combine with Time
+                melted_df['Date'] = pd.to_datetime(melted_df['Date'], errors='coerce')
+                if melted_df['Date'].isna().all():
+                    errors.append("Error: Unable to parse dates. Ensure 'Date' column contains valid date strings.")
+                else:
+                    melted_df['Timestamp'] = melted_df.apply(
+                        lambda row: row['Date'].strftime("%d/%m/%y") + " " + row['Time'] if pd.notna(row['Date']) else None,
+                        axis=1
+                    )
+                    melted_df = melted_df.drop(columns=["Date", "Time"])
+                    melted_df = melted_df.dropna(subset=["Timestamp", "Value"])
+                    
+                    # Validate converted data
+                    if melted_df.empty:
+                        errors.append("Warning: No valid data after conversion. Check your input file.")
+            except Exception as e:
+                errors.append(f"Error during data processing: {str(e)}.")
+            
+            # Display errors if any
+            if errors:
+                st.error("The following issues were encountered:")
+                for error in errors:
+                    st.write(error)
+            
+            # Display the converted data if no critical errors
+            if not errors or all("Warning" in e for e in errors):
+                st.write("Converted Data Preview:", melted_df)
                 
-                # Display preview
-                st.write("Preview of Resulting Data (Duplicates in 'Fed To'):")
-                st.dataframe(result_df.head(10))  # Show first 10 rows
-                
-                if result_df.empty:
-                    st.info("No duplicates found in 'Fed To'.")
-                
-                # Function to convert DataFrame to Excel
-                def to_excel(df):
-                    output = io.BytesIO()
-                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                        df.to_excel(writer, index=False, sheet_name='Duplicates')
-                    return output.getvalue()
-                
-                # Download button
-                excel_data = to_excel(result_df)
-                st.download_button(
-                    label="Download Resulting Excel",
-                    data=excel_data,
-                    file_name="duplicates_fed_to.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                # Offer download as XLSX
+                try:
+                    output = melted_df.to_excel("processed_data.xlsx", index=False, engine='openpyxl')
+                    with open("processed_data.xlsx", "rb") as file:
+                        st.download_button(
+                            label="Download Processed File as XLSX",
+                            data=file,
+                            file_name="processed_data.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                except Exception as e:
+                    errors.append(f"Error generating XLSX file: {str(e)}.")
+
     except Exception as e:
-        st.error(f"An error occurred while processing the file: {str(e)}")
+        errors.append(f"Unexpected error reading file: {str(e)}.")
+        st.error("The following issues were encountered:")
+        for error in errors:
+            st.write(error)
