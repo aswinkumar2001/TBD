@@ -78,12 +78,21 @@ if uploaded_file is not None:
                     
                     melted_df['Mapped_Fraction'] = melted_df['Time_Fraction'].apply(map_to_nearest_fraction)
                     
-                    # Handle Date column flexibly (DD/MM/YY or Excel serial date)
+                    # Handle Date column flexibly - try multiple formats
                     try:
-                        # Try parsing as DD/MM/YY (e.g., "13/03/25")
+                        # First try parsing as M/D/YY format (e.g., "7/03/25")
                         melted_df['Date'] = pd.to_datetime(melted_df['Date'], 
                                                            format="%d/%m/%y", 
                                                            errors='coerce')
+                        
+                        # If still NaN, try parsing as M/D/YYYY format (e.g., "7/03/2025")
+                        mask = melted_df['Date'].isna()
+                        melted_df.loc[mask, 'Date'] = pd.to_datetime(
+                            melted_df.loc[mask, 'Date'], 
+                            format="%d/%m/%Y", 
+                            errors='coerce'
+                        )
+                        
                         # If still NaN, try Excel serial date (e.g., 45841)
                         mask = melted_df['Date'].isna()
                         melted_df.loc[mask, 'Date'] = pd.to_datetime(
@@ -92,15 +101,16 @@ if uploaded_file is not None:
                             origin='1899-12-30', 
                             errors='coerce'
                         )
+                        
                         if melted_df['Date'].isna().all():
                             errors.append("Error: Unable to parse dates. Ensure 'Date' column contains valid DD/MM/YY strings or Excel serial dates.")
                     except ValueError as e:
-                        errors.append(f"Error parsing dates: {str(e)}. Ensure valid DD/MM/YY or serial date formats.")
+                        errors.append(f"Error parsing dates: {str(e)}. Ensure valid M/D/YY or serial date formats.")
                     
                     # Construct Timestamp using mapped fractions with exact HH:MM
                     melted_df['Timestamp'] = melted_df.apply(
                         lambda row: pd.NA if pd.isna(row['Date']) or pd.isna(row['Mapped_Fraction']) 
-                        else row['Date'].strftime("%d/%m/%y ") + time_mappings[row['Mapped_Fraction']],
+                        else row['Date'].strftime("%m/%d/%y ") + time_mappings[row['Mapped_Fraction']],
                         axis=1
                     )
                     
