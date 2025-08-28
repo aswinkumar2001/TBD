@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import io
-from datetime import datetime, timedelta
 import numpy as np
 
 # Title of the app
@@ -56,8 +55,8 @@ if uploaded_file is not None:
                                         var_name="Time_Fraction", 
                                         value_name="Value")
                     
-                    # Convert Time_Fraction to numeric
-                    melted_df['Time_Fraction'] = pd.to_numeric(melted_df['Time_Fraction'], errors='coerce')
+                    # Convert Time_Fraction to numeric and round to 8 decimal places
+                    melted_df['Time_Fraction'] = pd.to_numeric(melted_df['Time_Fraction'], errors='coerce').round(8)
                     
                     # Handle Date column flexibly (DD/MM/YY or Excel serial date)
                     try:
