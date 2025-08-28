@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 import numpy as np
+from datetime import timedelta
 
 # Title of the app
 st.title("Excel Date-Time Value Converter")
@@ -19,8 +20,15 @@ if uploaded_file is not None:
         if "Date" not in df.columns:
             errors.append("Error: 'Date' column not found in the uploaded file.")
         else:
-            # Define expected time fractions (48 half-hour increments, ending with 0.0)
-            time_fractions = [i / 48 for i in range(1, 48)] + [0.0]  # 0.020833333 to 0.979166667, then 0.0
+            # Define standard time fractions (48 half-hour increments, starting with 0.0)
+            standard_fractions = [0.0] + [i / 48 for i in range(1, 48)]  # 0.0, 0.020833333, ..., 0.979166667
+            # Map fractions to HH:MM times
+            time_mappings = {0.0: "00:00"}
+            for i in range(1, 48):
+                hours = (i * 30) // 60
+                minutes = (i * 30) % 60
+                time_mappings[i / 48] = f"{hours:02d}:{minutes:02d}"
+            
             column_headers = df.columns[1:]  # Exclude "Date" column
 
             # Convert column headers to numeric, handling strings
@@ -38,10 +46,10 @@ if uploaded_file is not None:
             # Check if headers match expected time fractions with tolerance
             if not errors:
                 tolerance = 1e-6  # Small tolerance for floating-point comparison
-                expected_set = set(np.round(time_fractions, 8))
+                expected_set = set(np.round(standard_fractions, 8))
                 actual_set = set(np.round(column_headers_numeric, 8))
                 if actual_set != expected_set or len(column_headers) != 48:
-                    errors.append("Error: Mismatch in expected time fraction columns. Expected exactly 48 fractions (0.020833333 to 0.979166667, 0.0).")
+                    errors.append("Error: Mismatch in expected time fraction columns. Expected exactly 48 fractions (0.0, 0.020833333 to 0.979166667).")
                     st.write("Expected fractions:", sorted(expected_set))
                     st.write("Actual fractions:", sorted(actual_set))
                     st.write(f"Expected number of columns: 48, Actual number: {len(column_headers)}")
@@ -55,8 +63,19 @@ if uploaded_file is not None:
                                         var_name="Time_Fraction", 
                                         value_name="Value")
                     
-                    # Convert Time_Fraction to numeric and round to 8 decimal places
-                    melted_df['Time_Fraction'] = pd.to_numeric(melted_df['Time_Fraction'], errors='coerce').round(8)
+                    # Convert Time_Fraction to numeric
+                    melted_df['Time_Fraction'] = pd.to_numeric(melted_df['Time_Fraction'], errors='coerce')
+                    
+                    # Map Time_Fraction to nearest standard fraction
+                    def map_to_nearest_fraction(fraction):
+                        if pd.isna(fraction):
+                            return fraction
+                        # Find the standard fraction with minimum absolute difference
+                        differences = [abs(fraction - sf) for sf in standard_fractions]
+                        min_index = np.argmin(differences)
+                        return standard_fractions[min_index]
+                    
+                    melted_df['Mapped_Fraction'] = melted_df['Time_Fraction'].apply(map_to_nearest_fraction)
                     
                     # Handle Date column flexibly (DD/MM/YY or Excel serial date)
                     try:
@@ -77,12 +96,14 @@ if uploaded_file is not None:
                     except ValueError as e:
                         errors.append(f"Error parsing dates: {str(e)}. Ensure valid DD/MM/YY or serial date formats.")
                     
-                    # Construct Timestamp (0.0 maps to 00:00 of the same day)
-                    melted_df['Timestamp'] = (
-                        melted_df['Date'] + pd.to_timedelta(melted_df['Time_Fraction'], unit='D')
-                    ).dt.strftime("%d/%m/%y %H:%M")
+                    # Construct Timestamp using mapped fractions
+                    melted_df['Timestamp'] = melted_df.apply(
+                        lambda row: pd.NA if pd.isna(row['Date']) or pd.isna(row['Mapped_Fraction']) 
+                        else (row['Date'] + pd.to_timedelta(row['Mapped_Fraction'], unit='D')).strftime("%d/%m/%y ") + time_mappings[row['Mapped_Fraction']],
+                        axis=1
+                    )
                     
-                    melted_df = melted_df.drop(columns=["Date", "Time_Fraction"])
+                    melted_df = melted_df.drop(columns=["Date", "Time_Fraction", "Mapped_Fraction"])
                     melted_df = melted_df.dropna(subset=["Timestamp", "Value"])
                     
                     # Validate converted data
