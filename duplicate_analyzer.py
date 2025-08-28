@@ -82,14 +82,14 @@ if uploaded_file is not None:
                     try:
                         # First try parsing as M/D/YY format (e.g., "7/03/25")
                         melted_df['Date'] = pd.to_datetime(melted_df['Date'], 
-                                                           format="%m/%d/%y", 
+                                                           format="%d/%m/%y", 
                                                            errors='coerce')
                         
                         # If still NaN, try parsing as M/D/YYYY format (e.g., "7/03/2025")
                         mask = melted_df['Date'].isna()
                         melted_df.loc[mask, 'Date'] = pd.to_datetime(
                             melted_df.loc[mask, 'Date'], 
-                            format="%m/%d/%Y", 
+                            format="%d/%m/%Y", 
                             errors='coerce'
                         )
                         
