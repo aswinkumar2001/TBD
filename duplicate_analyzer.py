@@ -82,14 +82,14 @@ if uploaded_file is not None:
                     try:
                         # First try parsing as M/D/YY format (e.g., "7/03/25")
                         melted_df['Date'] = pd.to_datetime(melted_df['Date'], 
-                                                           format="%d/%m/%y", 
+                                                           format="%m/%d/%y", 
                                                            errors='coerce')
                         
                         # If still NaN, try parsing as M/D/YYYY format (e.g., "7/03/2025")
                         mask = melted_df['Date'].isna()
                         melted_df.loc[mask, 'Date'] = pd.to_datetime(
                             melted_df.loc[mask, 'Date'], 
-                            format="%d/%m/%Y", 
+                            format="%m/%d/%Y", 
                             errors='coerce'
                         )
                         
@@ -103,7 +103,7 @@ if uploaded_file is not None:
                         )
                         
                         if melted_df['Date'].isna().all():
-                            errors.append("Error: Unable to parse dates. Ensure 'Date' column contains valid DD/MM/YY strings or Excel serial dates.")
+                            errors.append("Error: Unable to parse dates. Ensure 'Date' column contains valid M/D/YY strings or Excel serial dates.")
                     except ValueError as e:
                         errors.append(f"Error parsing dates: {str(e)}. Ensure valid M/D/YY or serial date formats.")
                     
@@ -114,12 +114,26 @@ if uploaded_file is not None:
                         axis=1
                     )
                     
+                    # Only drop rows where Timestamp is null, but keep rows with Value = 0
                     melted_df = melted_df.drop(columns=["Date", "Time_Fraction", "Mapped_Fraction"])
-                    melted_df = melted_df.dropna(subset=["Timestamp", "Value"])
                     
-                    # Validate converted data
+                    # Only remove rows where Timestamp is null, but keep all values (including 0)
+                    melted_df = melted_df.dropna(subset=["Timestamp"])
+                    
+                    # Convert Value column to numeric, keeping 0 values
+                    melted_df['Value'] = pd.to_numeric(melted_df['Value'], errors='coerce')
+                    
+                    # Replace NaN values in Value column with 0 (if desired)
+                    # melted_df['Value'] = melted_df['Value'].fillna(0)
+                    
+                    # Validate converted data - check if we have any rows at all
                     if melted_df.empty:
                         errors.append("Warning: No valid data after conversion. Check your input file.")
+                    else:
+                        st.write(f"Successfully processed {len(melted_df)} rows of data")
+                        st.write(f"Value range: {melted_df['Value'].min()} to {melted_df['Value'].max()}")
+                        st.write(f"Number of zero values: {(melted_df['Value'] == 0).sum()}")
+                        
                 except Exception as e:
                     errors.append(f"Error during data processing: {str(e)}.")
             
@@ -131,7 +145,8 @@ if uploaded_file is not None:
             
             # Display the converted data if no critical errors
             if not errors or all("Warning" in e for e in errors):
-                st.write("Converted Data Preview:", melted_df)
+                st.write("Converted Data Preview:", melted_df.head())
+                st.write(f"Total rows: {len(melted_df)}")
                 
                 # Offer download as XLSX using BytesIO, forcing Timestamp column as text
                 try:
