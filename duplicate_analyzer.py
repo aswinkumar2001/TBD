@@ -22,7 +22,7 @@ if uploaded_file is not None:
         else:
             # Define standard time fractions (48 half-hour increments, starting with 0.0)
             standard_fractions = [0.0] + [i / 48 for i in range(1, 48)]  # 0.0, 0.020833333, ..., 0.979166667
-            # Map fractions to HH:MM times
+            # Map fractions to HH:MM times (for validation and fallback)
             time_mappings = {0.0: "00:00"}
             for i in range(1, 48):
                 hours = (i * 30) // 60
@@ -96,10 +96,10 @@ if uploaded_file is not None:
                     except ValueError as e:
                         errors.append(f"Error parsing dates: {str(e)}. Ensure valid DD/MM/YY or serial date formats.")
                     
-                    # Construct Timestamp using mapped fractions
+                    # Construct Timestamp using mapped fractions, ensuring dd/mm/yy hh:mm format
                     melted_df['Timestamp'] = melted_df.apply(
-                        lambda row: pd.NA if pd.isna(row['Date']) or pd.isna(row['Mapped_Fraction']) 
-                        else (row['Date'] + pd.to_timedelta(row['Mapped_Fraction'], unit='D')).strftime("%d/%m/%y ") + time_mappings[row['Mapped_Fraction']],
+                        lambda row: pd.NA if pd.isna(row['Date']) or pd.isna(row['Mapped_Fraction'])
+                        else (row['Date'] + pd.to_timedelta(row['Mapped_Fraction'], unit='D')).strftime("%d/%m/%y %H:%M"),
                         axis=1
                     )
                     
