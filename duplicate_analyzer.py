@@ -59,13 +59,13 @@ if uploaded_file is not None:
                     # Convert Time_Fraction to numeric
                     melted_df['Time_Fraction'] = pd.to_numeric(melted_df['Time_Fraction'], errors='coerce')
                     
-                    # Handle Date column flexibly (text or Excel date format)
+                    # Handle Date column flexibly (DD/MM/YY or Excel serial date)
                     try:
-                        # Try parsing as text date first (e.g., "Thursday, March 27, 2025")
+                        # Try parsing as DD/MM/YY (e.g., "13/03/25")
                         melted_df['Date'] = pd.to_datetime(melted_df['Date'], 
-                                                           format="%A, %B %d, %Y", 
+                                                           format="%d/%m/%y", 
                                                            errors='coerce')
-                        # If still NaN, try Excel serial date
+                        # If still NaN, try Excel serial date (e.g., 45841)
                         mask = melted_df['Date'].isna()
                         melted_df.loc[mask, 'Date'] = pd.to_datetime(
                             pd.to_numeric(melted_df.loc[mask, 'Date'], errors='coerce'), 
@@ -74,15 +74,13 @@ if uploaded_file is not None:
                             errors='coerce'
                         )
                         if melted_df['Date'].isna().all():
-                            errors.append("Error: Unable to parse dates. Ensure 'Date' column contains valid date strings or Excel serial dates.")
+                            errors.append("Error: Unable to parse dates. Ensure 'Date' column contains valid DD/MM/YY strings or Excel serial dates.")
                     except ValueError as e:
-                        errors.append(f"Error parsing dates: {str(e)}. Ensure valid date formats.")
+                        errors.append(f"Error parsing dates: {str(e)}. Ensure valid DD/MM/YY or serial date formats.")
                     
-                    # Construct Timestamp
-                    # Handle 0.0 as 00:00 of the same day
+                    # Construct Timestamp (0.0 maps to 00:00 of the same day)
                     melted_df['Timestamp'] = (
-                        melted_df['Date'] + pd.to_timedelta(
-                            melted_df['Time_Fraction'].apply(lambda x: 1.0 if x == 0.0 else x), unit='D')
+                        melted_df['Date'] + pd.to_timedelta(melted_df['Time_Fraction'], unit='D')
                     ).dt.strftime("%d/%m/%y %H:%M")
                     
                     melted_df = melted_df.drop(columns=["Date", "Time_Fraction"])
