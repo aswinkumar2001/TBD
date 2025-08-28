@@ -3,6 +3,7 @@ import pandas as pd
 import io
 import numpy as np
 from datetime import timedelta
+from openpyxl import Workbook
 
 # Title of the app
 st.title("Excel Date-Time Value Converter")
@@ -20,14 +21,15 @@ if uploaded_file is not None:
         if "Date" not in df.columns:
             errors.append("Error: 'Date' column not found in the uploaded file.")
         else:
-            # Define standard time fractions (48 half-hour increments, starting with 0.0)
-            standard_fractions = [0.0] + [i / 48 for i in range(1, 48)]  # 0.0, 0.020833333, ..., 0.979166667
-            # Map fractions to HH:MM times (for validation and fallback)
-            time_mappings = {0.0: "00:00"}
+            # Define standard time fractions (48 half-hour increments, ending with 0.0)
+            standard_fractions = [i / 48 for i in range(1, 48)] + [0.0]  # 0.020833333 to 0.979166667, then 0.0
+            # Map fractions to HH:MM times
+            time_mappings = {}
             for i in range(1, 48):
                 hours = (i * 30) // 60
                 minutes = (i * 30) % 60
                 time_mappings[i / 48] = f"{hours:02d}:{minutes:02d}"
+            time_mappings[0.0] = "00:00"
             
             column_headers = df.columns[1:]  # Exclude "Date" column
 
@@ -49,7 +51,7 @@ if uploaded_file is not None:
                 expected_set = set(np.round(standard_fractions, 8))
                 actual_set = set(np.round(column_headers_numeric, 8))
                 if actual_set != expected_set or len(column_headers) != 48:
-                    errors.append("Error: Mismatch in expected time fraction columns. Expected exactly 48 fractions (0.0, 0.020833333 to 0.979166667).")
+                    errors.append("Error: Mismatch in expected time fraction columns. Expected exactly 48 fractions (0.020833333 to 0.979166667, 0.0).")
                     st.write("Expected fractions:", sorted(expected_set))
                     st.write("Actual fractions:", sorted(actual_set))
                     st.write(f"Expected number of columns: 48, Actual number: {len(column_headers)}")
@@ -96,10 +98,10 @@ if uploaded_file is not None:
                     except ValueError as e:
                         errors.append(f"Error parsing dates: {str(e)}. Ensure valid DD/MM/YY or serial date formats.")
                     
-                    # Construct Timestamp using mapped fractions, ensuring dd/mm/yy hh:mm format
+                    # Construct Timestamp using mapped fractions with exact HH:MM
                     melted_df['Timestamp'] = melted_df.apply(
-                        lambda row: pd.NA if pd.isna(row['Date']) or pd.isna(row['Mapped_Fraction'])
-                        else (row['Date'] + pd.to_timedelta(row['Mapped_Fraction'], unit='D')).strftime("%d/%m/%y %H:%M"),
+                        lambda row: pd.NA if pd.isna(row['Date']) or pd.isna(row['Mapped_Fraction']) 
+                        else row['Date'].strftime("%d/%m/%y ") + time_mappings[row['Mapped_Fraction']],
                         axis=1
                     )
                     
@@ -122,10 +124,15 @@ if uploaded_file is not None:
             if not errors or all("Warning" in e for e in errors):
                 st.write("Converted Data Preview:", melted_df)
                 
-                # Offer download as XLSX using BytesIO
+                # Offer download as XLSX using BytesIO, forcing Timestamp column as text
                 try:
                     output = io.BytesIO()
-                    melted_df.to_excel(output, index=False, engine='openpyxl')
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        melted_df.to_excel(writer, index=False, sheet_name='Sheet1')
+                        worksheet = writer.sheets['Sheet1']
+                        # Set Timestamp column (column A, index 1) to text format '@'
+                        for row in range(2, worksheet.max_row + 1):  # Data rows start at 2
+                            worksheet.cell(row=row, column=1).number_format = '@'
                     output.seek(0)
                     st.download_button(
                         label="Download Processed File as XLSX",
