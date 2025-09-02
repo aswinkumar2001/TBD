@@ -124,7 +124,7 @@ if uploaded_file is not None:
                     melted_df['Value'] = pd.to_numeric(melted_df['Value'], errors='coerce')
                     
                     # Replace NaN values in Value column with 0 (if desired)
-                    melted_df['Value'] = melted_df['Value'].fillna(0)
+                    # melted_df['Value'] = melted_df['Value'].fillna(0)
                     
                     # Validate converted data - check if we have any rows at all
                     if melted_df.empty:
